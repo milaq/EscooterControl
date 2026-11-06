@@ -17,8 +17,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.devcat.escootercontrol.ui.components.*
 import com.devcat.escootercontrol.ble.ScooterTelemetry
+import com.devcat.escootercontrol.ble.SpeedLimiterRules
 import com.devcat.escootercontrol.data.ScooterStore
 import com.devcat.escootercontrol.ui.theme.AppThemeMode
+import kotlin.math.roundToInt
 
 
 /** General scooter and app preferences. Ride mode now lives only on the dashboard. */
@@ -36,6 +38,9 @@ fun ScooterSettingsScreen(
     onForget: () -> Unit,
     onOpenSensors: () -> Unit,
     onOpenTuning: () -> Unit,
+    speedLimiterLimitKmh: Int?,
+    onSetSpeedLimiterLimit: (Int?) -> Unit,
+    fullMaxSpeedKmh: Int?,
     themeMode: AppThemeMode,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onRunSetupAgain: () -> Unit,
@@ -120,6 +125,19 @@ fun ScooterSettingsScreen(
                     )
                 }
                 if (telemetry.speedUnitMiles == null) HintText("Waiting for scooter status…")
+            }
+
+            SettingsCard(
+                title = "Speed limiter",
+                subtitle = "Switches the scooter's maximum speed between the full value and this " +
+                    "limit. Slide to the right end for no limit."
+            ) {
+                SpeedLimiterSlider(
+                    selectedKmh = speedLimiterLimitKmh,
+                    useMiles = telemetry.speedUnitMiles == true,
+                    fullMaxKmh = fullMaxSpeedKmh,
+                    onSet = onSetSpeedLimiterLimit
+                )
             }
 
             SettingsCard(
@@ -237,6 +255,61 @@ private fun ThemePicker(
                 }
             }
         }
+    }
+}
+
+/**
+ * Slider for the limit the dashboard's speed limiter applies. The rightmost detent is
+ * "Unlimited", which is also the default when nothing is stored.
+ *
+ * Uses the same [TuningSlider] as Speed & performance so both look identical, including the
+ * mph conversion in brackets when the scooter is set to miles.
+ */
+@Composable
+private fun SpeedLimiterSlider(
+    selectedKmh: Int?,
+    useMiles: Boolean,
+    fullMaxKmh: Int?,
+    onSet: (Int?) -> Unit
+) {
+    var slider by remember {
+        mutableFloatStateOf((selectedKmh ?: SpeedLimiterRules.UNLIMITED).toFloat())
+    }
+    var dragging by remember { mutableStateOf(false) }
+
+    // Adopt outside changes (a different scooter, or a value cleared elsewhere) unless the user
+    // is mid-drag, which would otherwise yank the thumb out from under their finger.
+    LaunchedEffect(selectedKmh) {
+        if (!dragging) slider = (selectedKmh ?: SpeedLimiterRules.UNLIMITED).toFloat()
+    }
+
+    val kmh = slider.roundToInt()
+    val unlimited = kmh >= SpeedLimiterRules.UNLIMITED
+    // A limiter may only ever lower the speed, so a limit at or above the scooter's max is not
+    // usable. Without a known max we can't tell yet and stay quiet.
+    val tooHigh = !unlimited && fullMaxKmh != null && kmh >= fullMaxKmh
+
+    TuningSlider(
+        title = "Limit",
+        value = slider,
+        valueRange = 1f..SpeedLimiterRules.UNLIMITED.toFloat(),
+        steps = SpeedLimiterRules.UNLIMITED - 2,
+        valueLabel = if (unlimited) "Unlimited" else speedLabel(kmh, null, useMiles),
+        onValueChange = { dragging = true; slider = it },
+        onValueChangeFinished = {
+            dragging = false
+            // Read the state instead of the value captured at composition: the final drag frame
+            // may not have recomposed before the release callback runs.
+            val chosen = slider.roundToInt()
+            onSet(chosen.takeIf { it < SpeedLimiterRules.UNLIMITED })
+        }
+    )
+
+    if (tooHigh) {
+        HintText(
+            "A limit can only lower the scooter's max speed " +
+                "(${speedLabel(fullMaxKmh, null, useMiles)}), so the dashboard button stays hidden."
+        )
     }
 }
 

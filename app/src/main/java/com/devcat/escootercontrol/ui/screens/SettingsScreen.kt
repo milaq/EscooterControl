@@ -377,7 +377,7 @@ private fun SpeedPresetRow(
 }
 
 @Composable
-private fun TuningSlider(
+internal fun TuningSlider(
     title: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
@@ -404,7 +404,7 @@ private fun TuningSlider(
     }
 }
 
-private fun speedLabel(sliderKmh: Int, reported: Int?, miles: Boolean): String {
+internal fun speedLabel(sliderKmh: Int, reported: Int?, miles: Boolean): String {
     fun fmt(kmh: Int) = if (miles) "$kmh km/h (%.0f mph)".format(Units.speed(kmh.toDouble(), true)) else "$kmh km/h"
     return when {
         reported != null && reported > 31 -> fmt(reported) + " (outside adjustable range)"

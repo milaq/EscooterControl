@@ -797,6 +797,16 @@ class ScooterBleManager(private val context: Context) {
         }
     }
 
+    /**
+     * Reads only the current max speed (code 60). The dashboard's speed limiter needs this as
+     * soon as the link is ready, without paying for the other three tuning reads. Harmless on a
+     * scooter that doesn't answer: telemetry just keeps its previous (null) value.
+     */
+    fun queryMaxSpeed() {
+        if (_demoMode.value) return // demo telemetry already seeds a known value
+        sendCommand(ProtocolCodec.CODE_SET_MAX_SPEED, listOf(0))
+    }
+
     // ---------------- Convenience wrappers for the UI layer ----------------
 
     fun toggleLock(currentlyLocked: Boolean) =

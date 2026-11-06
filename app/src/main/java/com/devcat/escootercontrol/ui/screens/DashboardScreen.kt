@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.devcat.escootercontrol.ui.components.*
 import com.devcat.escootercontrol.ble.ProtocolCodec
 import com.devcat.escootercontrol.ble.DashboardTelemetry
+import com.devcat.escootercontrol.ble.SpeedLimiterUi
 import com.devcat.escootercontrol.ble.Units
 import com.devcat.escootercontrol.data.FeatureFlags
 import kotlin.math.roundToInt
@@ -41,16 +42,19 @@ import kotlin.math.roundToInt
 private val ActiveAmber = Color(0xFF8A5B00)
 private val ActiveBlue = Color(0xFF285FA8)
 private val ActiveGreen = Color(0xFF26724B)
+private val ActiveRed = Color(0xFFA13B39)
 
 private data class RideModeVisual(
     val label: String,
     val accent: Color
 )
 
+// Ride-mode accents are the single source of truth for these hues; the dashboard's speed
+// limiter shortcut reuses them so the two controls always agree.
 private val rideModes = mapOf(
-    1 to RideModeVisual("Eco", Color(0xFF26724B)),
-    2 to RideModeVisual("Drive", Color(0xFF285FA8)),
-    3 to RideModeVisual("Sport", Color(0xFFA13B39))
+    1 to RideModeVisual("Eco", ActiveGreen),
+    2 to RideModeVisual("Drive", ActiveBlue),
+    3 to RideModeVisual("Sport", ActiveRed)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,6 +68,8 @@ fun DashboardScreen(
     onToggleCruise: () -> Unit,
     onToggleStartupMode: () -> Unit,
     onSetGear: (Int) -> Unit,
+    speedLimiter: SpeedLimiterUi?,
+    onToggleSpeedLimiter: () -> Unit,
     scooterName: String,
     isDemoMode: Boolean,
     onOpenSettings: () -> Unit,
@@ -245,6 +251,17 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(22.dp))
 
+            // Speed limiter shortcut, plus the lock and find-me controls below it: one stack,
+            // identical 56dp height, 18dp corners and 12dp separators.
+            if (speedLimiter != null) {
+                SpeedLimiterButton(
+                    state = speedLimiter,
+                    miles = miles,
+                    onClick = onToggleSpeedLimiter
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
             val locked = telemetry.locked
             val lockColor by animateColorAsState(
                 targetValue = if (locked == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
@@ -256,7 +273,7 @@ fun DashboardScreen(
                 onClick = onToggleLock,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp),
+                    .height(56.dp),
                 tint = lockColor.copy(alpha = 0.24f),
                 contentColor = if (locked == true) {
                     MaterialTheme.colorScheme.onErrorContainer
@@ -515,4 +532,82 @@ private fun RideModeSelector(
             }
         }
     }
+}
+
+/**
+ * Dashboard shortcut for switching the speed limiter between the scooter's configured max speed
+ * and the user's limit from Settings, styled exactly like the lock button beneath it.
+ *
+ * The scooter stores a single limit, so the "full" value is remembered on the phone; this shortcut
+ * only appears while there is a higher limit to switch back to. While a write is unconfirmed the
+ * label says so instead of optimistically showing the new state -- a speed limit is not something
+ * to display before the controller has accepted it.
+ *
+ * Colour reads like the lock button: red means the limiter is off, green means it is on. Both hues
+ * are the ride-mode accents above, so the shortcut matches the Eco/Sport tiles exactly.
+ */
+@Composable
+private fun SpeedLimiterButton(
+    state: SpeedLimiterUi,
+    miles: Boolean,
+    onClick: () -> Unit
+) {
+    val pending = state.pendingKmh
+    // While a restore-to-full write is in flight the scooter still reports the limit, so
+    // `limiterActive` is true; treat the limiter as off already so the colour matches the
+    // "off…" label.
+    val restoringFull = pending != null && pending != state.limitKmh
+    val limiterOff = restoringFull || !state.limiterActive
+
+    val accent by animateColorAsState(
+        targetValue = if (limiterOff) ActiveRed else ActiveGreen,
+        animationSpec = tween(180),
+        label = "speedLimiterColor"
+    )
+
+    val limitKmh = state.limitKmh
+    val label = when {
+        pending != null && pending == limitKmh ->
+           "Speed limited to ${limitSuffix(pending, miles)}…"
+        pending != null -> "Speed limiter disabled…"
+        limiterOff -> "Speed limiter disabled"
+        else -> "Speed limited to ${limitSuffix(limitKmh, miles)}"
+    }
+
+    PremiumGlassButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        tint = accent.copy(alpha = 0.24f),
+        contentColor = if (limiterOff) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        }
+    ) {
+        if (pending != null) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+                color = accent
+            )
+        } else {
+            Icon(Icons.Filled.Speed, contentDescription = null)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            label,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** "15 km/h", or the miles equivalent, appended to the limiter's "on" label. */
+private fun limitSuffix(kmh: Int?, miles: Boolean): String {
+    if (kmh == null) return ""
+    val shown = Units.speed(kmh.toDouble(), miles).roundToInt()
+    return "$shown ${Units.speedLabel(miles)}"
 }

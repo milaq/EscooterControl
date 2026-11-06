@@ -409,6 +409,7 @@ private fun VicontNavHost(
     
                     composable(Routes.DASHBOARD) {
                         val telemetry by viewModel.dashboardTelemetry.collectAsStateWithLifecycle()
+                        val speedLimiter by viewModel.speedLimiter.collectAsStateWithLifecycle()
                         PremiumPageSurface {
                             DashboardScreen(
                                 telemetry = telemetry,
@@ -419,6 +420,8 @@ private fun VicontNavHost(
                                 onToggleCruise = viewModel::toggleCruise,
                                 onToggleStartupMode = viewModel::toggleStartupMode,
                                 onSetGear = { viewModel.setGear(it) },
+                                speedLimiter = speedLimiter,
+                                onToggleSpeedLimiter = viewModel::toggleSpeedLimiter,
                                 scooterName = scooterName,
                                 isDemoMode = isDemoMode,
                                 onOpenSettings = { navController.navigate(Routes.SCOOTER_SETTINGS) },
@@ -433,6 +436,8 @@ private fun VicontNavHost(
     
                     composable(Routes.SCOOTER_SETTINGS) {
                         val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
+                        val speedLimiterLimit by viewModel.speedLimiterLimit.collectAsStateWithLifecycle()
+                        val fullMaxSpeed by viewModel.fullMaxSpeed.collectAsStateWithLifecycle()
                         PremiumPageSurface {
                             ScooterSettingsScreen(
                                 telemetry = telemetry,
@@ -446,6 +451,9 @@ private fun VicontNavHost(
                                 onForget = viewModel::forgetSavedScooter,
                                 onOpenSensors = { navController.navigate(Routes.SENSORS) },
                                 onOpenTuning = { navController.navigate(Routes.SETTINGS) },
+                                speedLimiterLimitKmh = speedLimiterLimit,
+                                fullMaxSpeedKmh = fullMaxSpeed,
+                                onSetSpeedLimiterLimit = viewModel::setSpeedLimiterLimit,
                                 themeMode = themeMode,
                                 onThemeModeChanged = onThemeModeChanged,
                                 onRunSetupAgain = onRunSetupAgain,
